@@ -31,7 +31,7 @@ install-python-deps:
 
 # Start the Ganache development blockchain
 start-ganache:
-	$(GANACHE) -p $(GANACHE_PORT)
+	$(GANACHE) -p $(GANACHE_PORT) --deterministic --accounts 6
 
 # Deploy smart contracts using Truffle
 deploy-contracts:
