@@ -21,7 +21,7 @@ w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
 data_registry = w3.eth.contract(address=contract_address, abi=contract_abi)
 
 # Select a specific user address for testing (use one of the sample addresses)
-user_address = "0x6e7783e55aD4640386aac3957041b349c4866E14"
+user_address = "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1"
 
 while True:
     print("# " + name + "> ", end="")

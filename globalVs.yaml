@@ -1,9 +1,0 @@
-CertiName:
-  ABC University: transcript
-  SBI Bank: loan
-  XYZ Company: job_application
-merkle_signatures: []
-url:
-  ABC University: http://localhost:8080/
-  SBI Bank: http://localhost:8082/
-  XYZ Company: http://localhost:8081/
