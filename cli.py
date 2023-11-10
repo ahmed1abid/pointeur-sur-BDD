@@ -1,9 +1,16 @@
-import yaml
+import os
 import json
+import aiohttp
 from termcolor import colored
 from web3 import Web3
+from pinatapy import PinataPy
+from dotenv import load_dotenv
 from User import User
-import json
+
+# Load sensitive information from environment variables
+load_dotenv()
+pinata_api_key = os.environ.get('PinataAPIKey')
+pinata_secret_api_key = os.environ.get('PinataAPISecret')
 
 # Load the contract ABI and address from the JSON file
 with open("./build/contracts/DataRegistry.json", "r") as json_file:
@@ -13,93 +20,134 @@ with open("./build/contracts/DataRegistry.json", "r") as json_file:
 contract_abi = contract_data["abi"]
 contract_address = contract_data["networks"]["5777"]["address"]
 
-name = "DIMS"
-wallet_file = None
-user = None
-ssn = None
+# Connect to the Pinata IPFS cloud service
+pinata = PinataPy(pinata_api_key, pinata_secret_api_key)
+
+# Connect to the local Ethereum node (Ganache)
 w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
-data_registry = w3.eth.contract(address=contract_address, abi=contract_abi)
 
-# Select a specific user address for testing (use one of the sample addresses)
-user_address = "0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1"
+# Main function
+async def main():
+    # Select a specific user address for testing (use one of the sample addresses)
+    user_address = await get_user_address(w3)
 
-while True:
-    print("# " + name + "> ", end="")
-    inp = input()
-    inp_list = inp.split(' ')
+    # User object
+    user = None
 
-    if inp_list[0] in ['initialize', 'init']:
-        if inp_list[1] in ['user']:
-            print("Enter your name: ", end = "")
-            name = input()
-            print("Hello " + colored(name, 'blue'))
-            print("Please give your wallet file path: ", end = "")
-            wallet_file = input() or "wallet.yaml"
-    
-            print("Enter your ssn: ", end = "")
-            ssn = int(input())
-            print("Your SSN: " + colored(ssn, 'blue'))
+    while True:
+        print("# DIMS> ", end="")
+        inp = input()
+        inp_list = inp.split(' ')
 
-            print("Enter your data: ", end = "")
-            data = input()
-            
-        
-            
-            try:
-                user = User(name=name, wallet_file=wallet_file, ssn=ssn,data=data)
-                user.encrypt_data()
-                print("Wallet Loaded")
+        if inp_list[0] in ['initialize', 'init']:
+            if inp_list[1] in ['user']:
+                user = initialize_user()
 
-            except Exception as e:
-                print("Error in loading wallet")
-                raise e
+        elif inp_list[0] in ['display', 'show', 'view']:
+            if inp_list[1] in ['user_data']:
+                display_user_data(user)
 
-    if inp_list[0] in ['display', 'show', 'view']:
-        if inp_list[1] in ['user_data']:
-            if user is None:
-                print('User is None, use "init user"')
-                continue
+            elif inp_list[1] in ['data']:
+                await display_data(user.data)
 
-            print("User Name: " + user.name)
-            print("User SSN: " + str(user.ssn))
-            
-            if user.wallet:
-                print("Certificates available: " + str(user.wallet.keys()))
-                for cert_name in user.wallet.keys():
-                    print("*********" + colored('CERTIFICATE', 'red') + ": " + colored("{}".format(cert_name), 'yellow') + " ***********\n")
-                    cert_file = user.wallet[cert_name]
-                    cert_data = yaml.safe_load(open(cert_file))
-                    for attr, value in cert_data.items():
-                        if attr != 'Attributes':
-                            print(colored(attr, 'blue') + " : " + colored(str(value), 'green'))
-                        else:
-                            for ind_attr, ind_value in value.items():
-                                print('\t' + colored(ind_attr, 'blue') + ' : ' + colored(str(ind_value), 'green'))
-                    print("\n*************************************************\n")
+        elif inp_list[0] in ['send', 'store', 'upload']:
+            if inp_list[1] in ['data']:
+                await store_data(user, contract_abi, contract_address, user_address)
 
-    if inp_list[0] in ['send', 'store', 'upload']:
-        if inp_list[1] in ['data']:
-                if user.data:
-                        data_to_store = user.data
-                        if data_to_store:
-                            data_to_store_hex = "0x" + data_to_store.encode('utf-8').hex()
+# Function to initialize the user
+def initialize_user():
+    print("Enter your name: ", end="")
+    name = input()
+    print("Hello " + colored(name, 'blue'))
+    print("Please give your wallet file path: ", end="")
+    wallet_file = input() or "wallet.yaml"
 
-                            # Fetch the latest nonce and chain ID
-                            nonce = w3.eth.get_transaction_count(user_address)
-                            chain_id = w3.eth.chain_id
+    print("Enter your ssn: ", end="")
+    ssn = int(input())
+    print("Your SSN: " + colored(ssn, 'blue'))
 
-                            # Encode the function call
-                            transaction = data_registry.functions.storeData(data_to_store_hex).build_transaction({
-                                    'gas': 2000000,
-                                    'gasPrice': 20000000000,
-                                    'from': user_address,
-                                    'nonce': nonce,
-                                    'chainId': chain_id
-                                })
+    print("Enter your data: ", end="")
+    data = input()
 
-                            tx_hash = w3.eth.send_transaction(transaction)
-                            print("Data sent to the blockchain. Transaction Hash:", tx_hash.hex())
-                        else:
-                            print("No data to send.")
+    try:
+        user = User(name=name, wallet_file=wallet_file, ssn=ssn, data=data)
+        user.encrypt_data()
+        print("Wallet Loaded")
+        return user
+
+    except Exception as e:
+        print("Error in loading wallet")
+        raise e
+
+# Function to display user data
+def display_user_data(user):
+    if user is None:
+        print('User is None, use "init user"')
+        return
+
+    print("User Name: " + user.name)
+    print("User SSN: " + str(user.ssn))
+
+    if user.wallet:
+        print("Certificates available: " + str(user.wallet.keys()))
+        for cert_name in user.wallet.keys():
+            print("*********" + colored('CERTIFICATE', 'red') + ": " + colored("{}".format(cert_name), 'yellow') + " ***********\n")
+            cert_file = user.wallet[cert_name]
+            cert_data = json.safe_load(open(cert_file))
+            for attr, value in cert_data.items():
+                if attr != 'Attributes':
+                    print(colored(attr, 'blue') + " : " + colored(str(value), 'green'))
                 else:
-                        print("User address is not set. Make sure to set it to your Ethereum address.")
+                    for ind_attr, ind_value in value.items():
+                        print('\t' + colored(ind_attr, 'blue') + ' : ' + colored(str(ind_value), 'green'))
+            print("\n*************************************************\n")
+
+# Function to display data from IPFS
+async def display_data(ipfs_hash):
+    if ipfs_hash:
+        retrieved_user_data = await get_from_ipfs_async(ipfs_hash)
+        print("Retrieved user data from IPFS:", retrieved_user_data)
+    else:
+        print("Retrieved user data from IPFS: is not there")
+
+# Function to store data on the blockchain
+async def store_data(user, contract_abi, contract_address, user_address):
+    if user.data:
+        data_to_store = "name  : " + user.name + "   ssn   :  " + str(user.ssn) + " data   : " + user.data
+        if data_to_store:
+            ipfs_hash = await upload_to_ipfs_async(data_to_store, pinata)
+            print("User data added to IPFS. IPFS Hash:", ipfs_hash)
+
+            # Convert ipfs_hash to string
+            ipfs_hash = str(ipfs_hash)
+
+            # Fetch the latest nonce and chain ID
+            nonce = w3.eth.get_transaction_count(user_address)
+            chain_id = w3.eth.chain_id
+
+            # Encode the function call
+            transaction = w3.eth.contract(address=contract_address, abi=contract_abi).functions.storeData(ipfs_hash).build_transaction({
+                'gas': 2000000,
+                'gasPrice': 20000000000,
+                'from': user_address,
+                'nonce': nonce,
+                'chainId': chain_id
+            })
+
+            tx_hash = w3.eth.send_transaction(transaction)
+            print("User data sent to the blockchain. Transaction Hash:", tx_hash.hex())
+
+        else:
+            print("No user data to send.")
+    else:
+        print("User address is not set. Make sure to set it to your Ethereum address.")
+
+# Function to get the user's Ethereum address from Ganache
+async def get_user_address(w3):
+    accounts = await w3.eth.get_accounts()
+    return accounts[0] if accounts else None
+
+# Run the main function
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

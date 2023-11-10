@@ -1,3 +1,5 @@
 _pycache_
 *.pyc
 node_modules
+.env 
+unipi 

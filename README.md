@@ -90,3 +90,9 @@ Execute: python3 generated_SBI_Bank.py in future to run your Flask server
 STARTING SERVER...
 ```
 
+
+
+### IPFS 
+generating ED25519 keypair...done
+peer identity: 12D3KooWMyJNy5xxMPvPqtTpiRMfDAaHxWgPKgMe1RrpryP9ceaR
+initializing IPFS node at /home/ahmed/.ipfs
